@@ -1,0 +1,1192 @@
+*------------------------------------------------------------*;
+* Data Source Setup;
+*------------------------------------------------------------*;
+libname EMWS2 "/home/jammiethomasras0/Capstone Thesis/Workspaces/EMWS2";
+*------------------------------------------------------------*;
+* Ids: Creating DATA data;
+*------------------------------------------------------------*;
+data EMWS2.Ids_DATA (label="")
+/ view=EMWS2.Ids_DATA
+;
+set CAPSTONE.EM_SAVE_TRAIN;
+run;
+
+length _FILTERFMT1  $200;
+drop _FILTERFMT1 ;
+_FILTERFMT1= put(hotel,$12.);
+if
+_FILTERFMT1 not in ( 'Resort Hotel')
+then do;
+if M_FILTER eq . then M_FILTER = 0;
+else M_FILTER = M_FILTER + 0;
+end;
+else M_FILTER = 1;
+label M_FILTER = 'Filtered Indicator';
+length M_FILTER 8;
+
+*------------------------------------------------------------*;
+* Part: Create random partition;
+*------------------------------------------------------------*;
+data
+EMWS2.Part_TRAIN(label="")
+EMWS2.Part_VALIDATE(label="")
+EMWS2.Part_TEST(label="")
+;
+retain _seed_ 12345;
+drop _seed_ _genvalue_;
+call ranuni(_seed_, _genvalue_);
+label _dataobs_ = "%sysfunc(sasmsg(sashelp.dmine, sample_dataobs_vlabel, NOQUOTE))";
+_dataobs_ = _N_;
+drop _c00:;
+set EMWS2.Filter_TRAIN;
+if (79330+1-_n_)*_genvalue_ <= (31732 - _C000001) then do;
+_C000001 + 1;
+output EMWS2.Part_TRAIN;
+end;
+else if (79330+1-_n_)*_genvalue_ <= (31732 - _C000001 + 23799 - _C000002) then do;
+_C000002 + 1;
+output EMWS2.Part_VALIDATE;
+end;
+else do;
+_C000003 + 1;
+output EMWS2.Part_TEST;
+end;
+run;
+run;
+
+*------------------------------------------------------------* ;
+* EM: DMDBClass Macro ;
+*------------------------------------------------------------* ;
+%macro DMDBClass;
+    adults(ASC) arrival_date_month(ASC) arrival_date_year(ASC)
+   assigned_room_type(ASC) babies(ASC) children(ASC) customer_type(ASC)
+   deposit_type(ASC) distribution_channel(ASC) hotel(ASC) is_canceled(ASC)
+   is_repeated_guest(ASC) market_segment(ASC) meal(ASC)
+   previous_cancellations(ASC) required_car_parking_spaces(ASC)
+   reservation_status(ASC) reserved_room_type(ASC) stays_in_weekend_nights(ASC)
+   total_of_special_requests(ASC)
+%mend DMDBClass;
+*------------------------------------------------------------* ;
+* EM: DMDBVar Macro ;
+*------------------------------------------------------------* ;
+%macro DMDBVar;
+    adr arrival_date_day_of_month arrival_date_week_number booking_changes
+   days_in_waiting_list lead_time previous_bookings_not_canceled
+   stays_in_week_nights
+%mend DMDBVar;
+*------------------------------------------------------------*;
+* EM: Create DMDB;
+*------------------------------------------------------------*;
+libname _spdslib SPDE "/saswork/SAS_work7E070000958B_odaws01-usw2.oda.sas.com";
+proc dmdb batch data=EMWS2.Part_TRAIN
+dmdbcat=WORK.EM_DMDB
+maxlevel = 101
+out=_spdslib.EM_DMDB
+;
+class %DMDBClass;
+var %DMDBVar;
+target
+adr
+;
+run;
+quit;
+*------------------------------------------------------------* ;
+* Varsel: Input Variables Macro ;
+*------------------------------------------------------------* ;
+%macro INPUTS;
+               ADULTS ARRIVAL_DATE_DAY_OF_MONTH ARRIVAL_DATE_MONTH ARRIVAL_DATE_WEEK_NUMBER
+              arrival_date_year ASSIGNED_ROOM_TYPE BABIES BOOKING_CHANGES CHILDREN
+              customer_type DAYS_IN_WAITING_LIST DEPOSIT_TYPE DISTRIBUTION_CHANNEL HOTEL
+              is_canceled IS_REPEATED_GUEST LEAD_TIME MARKET_SEGMENT MEAL
+              previous_bookings_not_canceled PREVIOUS_CANCELLATIONS
+              required_car_parking_spaces RESERVATION_STATUS RESERVED_ROOM_TYPE
+   stays_in_week_nights STAYS_IN_WEEKEND_NIGHTS TOTAL_OF_SPECIAL_REQUESTS
+%mend INPUTS;
+proc dmine data=_spdslib.EM_DMDB dmdbcat=WORK.EM_DMDB
+minr2=0.005 maxrows=3000 stopr2=0.0005 NOAOV16 NOINTER USEGROUPS OUTGROUP=EMWS2.Varsel_OUTGROUP outest=EMWS2.Varsel_OUTESTDMINE outeffect=EMWS2.Varsel_OUTEFFECT outrsquare =EMWS2.Varsel_OUTRSQUARE
+NOMONITOR
+PSHORT
+;
+var %INPUTS;
+target adr;
+code file="/home/jammiethomasras0/Capstone Thesis/Workspaces/EMWS2/Varsel/EMFLOWSCORE.sas";
+code file="/home/jammiethomasras0/Capstone Thesis/Workspaces/EMWS2/Varsel/EMPUBLISHSCORE.sas";
+run;
+quit;
+/*      proc print data =EMWS2.Varsel_OUTEFFECT;      proc print data =EMWS2.Varsel_OUTRSQUARE;      */
+run;
+
+******************************************;
+*** Begin Scoring Code from PROC DMINE ***;
+******************************************;
+
+length _WARN_ $ 4;
+label _WARN_ = "Warnings";
+
+
+/*----G_reserved_room_type begin----*/
+length _NORM1 $ 1;
+_NORM1 = put( reserved_room_type , $1. );
+%DMNORMIP( _NORM1 )
+drop _NORM1;
+select(_NORM1);
+  when('A' ) G_reserved_room_type = 0;
+  when('B' ) G_reserved_room_type = 0;
+  when('C' ) G_reserved_room_type = 1;
+  when('D' ) G_reserved_room_type = 1;
+  when('E' ) G_reserved_room_type = 2;
+  when('F' ) G_reserved_room_type = 3;
+  when('G' ) G_reserved_room_type = 3;
+  when('P' ) G_reserved_room_type = 0;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_reserved_room_type="Grouped Levels for  reserved_room_type";
+/*----reserved_room_type end----*/
+
+/*----G_assigned_room_type begin----*/
+length _NORM1 $ 1;
+_NORM1 = put( assigned_room_type , $1. );
+%DMNORMIP( _NORM1 )
+drop _NORM1;
+select(_NORM1);
+  when('A' ) G_assigned_room_type = 1;
+  when('B' ) G_assigned_room_type = 1;
+  when('C' ) G_assigned_room_type = 1;
+  when('D' ) G_assigned_room_type = 2;
+  when('E' ) G_assigned_room_type = 3;
+  when('F' ) G_assigned_room_type = 4;
+  when('G' ) G_assigned_room_type = 4;
+  when('K' ) G_assigned_room_type = 0;
+  when('P' ) G_assigned_room_type = 0;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_assigned_room_type="Grouped Levels for  assigned_room_type";
+/*----assigned_room_type end----*/
+
+/*----G_market_segment begin----*/
+length _NORM13 $ 13;
+_NORM13 = put( market_segment , $13. );
+%DMNORMIP( _NORM13 )
+drop _NORM13;
+select(_NORM13);
+  when('AVIATION' ) G_market_segment = 2;
+  when('COMPLEMENTARY' ) G_market_segment = 0;
+  when('CORPORATE' ) G_market_segment = 1;
+  when('DIRECT' ) G_market_segment = 3;
+  when('GROUPS' ) G_market_segment = 1;
+  when('OFFLINE TA/TO' ) G_market_segment = 2;
+  when('ONLINE TA' ) G_market_segment = 3;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_market_segment="Grouped Levels for  market_segment";
+/*----market_segment end----*/
+
+/*----G_children begin----*/
+length _NORM12 $ 12;
+_NORM12 = put( children , BEST12. );
+%DMNORMIP( _NORM12 )
+drop _NORM12;
+select(_NORM12);
+  when('0' ) G_children = 0;
+  when('1' ) G_children = 1;
+  when('2' ) G_children = 2;
+  when('3' ) G_children = 2;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_children="Grouped Levels for  children";
+/*----children end----*/
+
+/*----G_adults begin----*/
+length _NORM12 $ 12;
+_NORM12 = put( adults , BEST12. );
+%DMNORMIP( _NORM12 )
+drop _NORM12;
+select(_NORM12);
+  when('0' ) G_adults = 0;
+  when('1' ) G_adults = 1;
+  when('2' ) G_adults = 2;
+  when('3' ) G_adults = 3;
+  when('4' ) G_adults = 3;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_adults="Grouped Levels for  adults";
+/*----adults end----*/
+
+/*----G_arrival_date_month begin----*/
+length _NORM4 $ 4;
+_NORM4 = put( arrival_date_month , $4. );
+%DMNORMIP( _NORM4 )
+drop _NORM4;
+select(_NORM4);
+  when('APRI' ) G_arrival_date_month = 3;
+  when('AUGU' ) G_arrival_date_month = 3;
+  when('DECE' ) G_arrival_date_month = 0;
+  when('FEBR' ) G_arrival_date_month = 0;
+  when('JANU' ) G_arrival_date_month = 0;
+  when('JULY' ) G_arrival_date_month = 3;
+  when('JUNE' ) G_arrival_date_month = 4;
+  when('MARC' ) G_arrival_date_month = 1;
+  when('MAY' ) G_arrival_date_month = 4;
+  when('NOVE' ) G_arrival_date_month = 1;
+  when('OCTO' ) G_arrival_date_month = 2;
+  when('SEPT' ) G_arrival_date_month = 3;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_arrival_date_month="Grouped Levels for  arrival_date_month";
+/*----arrival_date_month end----*/
+
+/*----G_total_of_special_requests begin----*/
+length _NORM12 $ 12;
+_NORM12 = put( total_of_special_requests , BEST12. );
+%DMNORMIP( _NORM12 )
+drop _NORM12;
+select(_NORM12);
+  when('0' ) G_total_of_special_requests = 0;
+  when('1' ) G_total_of_special_requests = 1;
+  when('2' ) G_total_of_special_requests = 2;
+  when('3' ) G_total_of_special_requests = 2;
+  when('4' ) G_total_of_special_requests = 2;
+  when('5' ) G_total_of_special_requests = 1;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_total_of_special_requests="Grouped Levels for
+        total_of_special_requests";
+/*----total_of_special_requests end----*/
+
+/*----G_customer_type begin----*/
+length _NORM15 $ 15;
+_NORM15 = put( customer_type , $15. );
+%DMNORMIP( _NORM15 )
+drop _NORM15;
+select(_NORM15);
+  when('CONTRACT' ) G_customer_type = 0;
+  when('GROUP' ) G_customer_type = 0;
+  when('TRANSIENT' ) G_customer_type = 1;
+  when('TRANSIENT-PARTY' ) G_customer_type = 0;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_customer_type="Grouped Levels for  customer_type";
+/*----customer_type end----*/
+
+/*----G_deposit_type begin----*/
+length _NORM10 $ 10;
+_NORM10 = put( deposit_type , $10. );
+%DMNORMIP( _NORM10 )
+drop _NORM10;
+select(_NORM10);
+  when('NO DEPOSIT' ) G_deposit_type = 1;
+  when('NON REFUND' ) G_deposit_type = 0;
+  when('REFUNDABLE' ) G_deposit_type = 1;
+  otherwise substr(_WARN_, 2, 1) = 'U';
+end;
+label G_deposit_type="Grouped Levels for  deposit_type";
+/*----deposit_type end----*/
+
+
+****************************************;
+*** End Scoring Code from PROC DMINE ***;
+****************************************;
+
+*------------------------------------------------------------*;
+* Reg2: Create decision matrix;
+*------------------------------------------------------------*;
+data WORK.adr(label="adr");
+  length   adr                                  8
+           ;
+
+ adr=-6.38;
+output;
+ adr=5400;
+output;
+ adr=2696.81;
+output;
+;
+run;
+proc datasets lib=work nolist;
+modify adr(type=PROFIT label=adr);
+run;
+quit;
+data EM_DMREG / view=EM_DMREG;
+set EMWS2.Varsel_TRAIN(keep=
+G_adults G_arrival_date_month G_assigned_room_type G_children G_customer_type
+G_deposit_type G_market_segment G_reserved_room_type
+G_total_of_special_requests adr arrival_date_year distribution_channel
+is_repeated_guest lead_time meal);
+run;
+*------------------------------------------------------------* ;
+* Reg2: DMDBClass Macro ;
+*------------------------------------------------------------* ;
+%macro DMDBClass;
+    G_adults(ASC) G_arrival_date_month(ASC) G_assigned_room_type(ASC)
+   G_children(ASC) G_customer_type(ASC) G_deposit_type(ASC) G_market_segment(ASC)
+   G_reserved_room_type(ASC) G_total_of_special_requests(ASC)
+   arrival_date_year(ASC) distribution_channel(ASC) is_repeated_guest(ASC)
+   meal(ASC)
+%mend DMDBClass;
+*------------------------------------------------------------* ;
+* Reg2: DMDBVar Macro ;
+*------------------------------------------------------------* ;
+%macro DMDBVar;
+    adr lead_time
+%mend DMDBVar;
+*------------------------------------------------------------*;
+* Reg2: Create DMDB;
+*------------------------------------------------------------*;
+proc dmdb batch data=WORK.EM_DMREG
+dmdbcat=WORK.Reg2_DMDB
+maxlevel = 513
+;
+class %DMDBClass;
+var %DMDBVar;
+target
+adr
+;
+run;
+quit;
+*------------------------------------------------------------*;
+* Reg2: Run DMREG procedure;
+*------------------------------------------------------------*;
+proc dmreg data=EM_DMREG dmdbcat=WORK.Reg2_DMDB
+validata = EMWS2.Varsel_VALIDATE
+outest = EMWS2.Reg2_EMESTIMATE
+outterms = EMWS2.Reg2_OUTTERMS
+outmap= EMWS2.Reg2_MAPDS namelen=200
+;
+class
+G_adults
+G_arrival_date_month
+G_assigned_room_type
+G_children
+G_customer_type
+G_deposit_type
+G_market_segment
+G_reserved_room_type
+G_total_of_special_requests
+arrival_date_year
+distribution_channel
+is_repeated_guest
+meal
+;
+model adr =
+G_adults
+G_arrival_date_month
+G_assigned_room_type
+G_children
+G_customer_type
+G_deposit_type
+G_market_segment
+G_reserved_room_type
+G_total_of_special_requests
+arrival_date_year
+distribution_channel
+is_repeated_guest
+lead_time
+meal
+/error=normal
+coding=DEVIATION
+nodesignprint
+selection=STEPWISE choose=NONE
+Hierarchy=CLASS
+Rule=NONE
+;
+;
+score data=EMWS2.Varsel_TEST
+out=_null_
+outfit=EMWS2.Reg2_FITTEST
+role = TEST
+;
+code file="/home/jammiethomasras0/Capstone Thesis/Workspaces/EMWS2/Reg2/EMPUBLISHSCORE.sas"
+group=Reg2
+;
+code file="/home/jammiethomasras0/Capstone Thesis/Workspaces/EMWS2/Reg2/EMFLOWSCORE.sas"
+group=Reg2
+residual
+;
+run;
+quit;
+
+*************************************;
+*** begin scoring code for regression;
+*************************************;
+
+length _WARN_ $4;
+label _WARN_ = 'Warnings' ;
+
+
+drop _DM_BAD;
+_DM_BAD=0;
+
+*** Check lead_time for missing values ;
+if missing( lead_time ) then do;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+
+*** Generate dummy variables for G_adults ;
+drop _0_0 _0_1 _0_2 ;
+if missing( G_adults ) then do;
+   _0_0 = .;
+   _0_1 = .;
+   _0_2 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_adults , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '2'  then do;
+      _0_0 = 0;
+      _0_1 = 0;
+      _0_2 = 1;
+   end;
+   else if _dm12 = '1'  then do;
+      _0_0 = 0;
+      _0_1 = 1;
+      _0_2 = 0;
+   end;
+   else if _dm12 = '3'  then do;
+      _0_0 = -1;
+      _0_1 = -1;
+      _0_2 = -1;
+   end;
+   else if _dm12 = '0'  then do;
+      _0_0 = 1;
+      _0_1 = 0;
+      _0_2 = 0;
+   end;
+   else do;
+      _0_0 = .;
+      _0_1 = .;
+      _0_2 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for G_arrival_date_month ;
+drop _1_0 _1_1 _1_2 _1_3 ;
+*** encoding is sparse, initialize to zero;
+_1_0 = 0;
+_1_1 = 0;
+_1_2 = 0;
+_1_3 = 0;
+if missing( G_arrival_date_month ) then do;
+   _1_0 = .;
+   _1_1 = .;
+   _1_2 = .;
+   _1_3 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_arrival_date_month , BEST12. );
+   %DMNORMIP( _dm12 )
+   _dm_find = 0; drop _dm_find;
+   if _dm12 <= '2'  then do;
+      if _dm12 <= '1'  then do;
+         if _dm12 = '0'  then do;
+            _1_0 = 1;
+            _dm_find = 1;
+         end;
+         else do;
+            if _dm12 = '1'  then do;
+               _1_1 = 1;
+               _dm_find = 1;
+            end;
+         end;
+      end;
+      else do;
+         if _dm12 = '2'  then do;
+            _1_2 = 1;
+            _dm_find = 1;
+         end;
+      end;
+   end;
+   else do;
+      if _dm12 = '3'  then do;
+         _1_3 = 1;
+         _dm_find = 1;
+      end;
+      else do;
+         if _dm12 = '4'  then do;
+            _1_0 = -1;
+            _1_1 = -1;
+            _1_2 = -1;
+            _1_3 = -1;
+            _dm_find = 1;
+         end;
+      end;
+   end;
+   if not _dm_find then do;
+      _1_0 = .;
+      _1_1 = .;
+      _1_2 = .;
+      _1_3 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for G_assigned_room_type ;
+drop _2_0 _2_1 _2_2 _2_3 ;
+*** encoding is sparse, initialize to zero;
+_2_0 = 0;
+_2_1 = 0;
+_2_2 = 0;
+_2_3 = 0;
+if missing( G_assigned_room_type ) then do;
+   _2_0 = .;
+   _2_1 = .;
+   _2_2 = .;
+   _2_3 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_assigned_room_type , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '1'  then do;
+      _2_1 = 1;
+   end;
+   else if _dm12 = '2'  then do;
+      _2_2 = 1;
+   end;
+   else if _dm12 = '4'  then do;
+      _2_0 = -1;
+      _2_1 = -1;
+      _2_2 = -1;
+      _2_3 = -1;
+   end;
+   else if _dm12 = '3'  then do;
+      _2_3 = 1;
+   end;
+   else if _dm12 = '0'  then do;
+      _2_0 = 1;
+   end;
+   else do;
+      _2_0 = .;
+      _2_1 = .;
+      _2_2 = .;
+      _2_3 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for G_children ;
+drop _3_0 _3_1 ;
+if missing( G_children ) then do;
+   _3_0 = .;
+   _3_1 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_children , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '0'  then do;
+      _3_0 = 1;
+      _3_1 = 0;
+   end;
+   else if _dm12 = '1'  then do;
+      _3_0 = 0;
+      _3_1 = 1;
+   end;
+   else if _dm12 = '2'  then do;
+      _3_0 = -1;
+      _3_1 = -1;
+   end;
+   else do;
+      _3_0 = .;
+      _3_1 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for G_customer_type ;
+drop _4_0 ;
+if missing( G_customer_type ) then do;
+   _4_0 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_customer_type , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '1'  then do;
+      _4_0 = -1;
+   end;
+   else if _dm12 = '0'  then do;
+      _4_0 = 1;
+   end;
+   else do;
+      _4_0 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for G_deposit_type ;
+drop _5_0 ;
+if missing( G_deposit_type ) then do;
+   _5_0 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_deposit_type , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '1'  then do;
+      _5_0 = -1;
+   end;
+   else if _dm12 = '0'  then do;
+      _5_0 = 1;
+   end;
+   else do;
+      _5_0 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for G_market_segment ;
+drop _6_0 _6_1 _6_2 ;
+if missing( G_market_segment ) then do;
+   _6_0 = .;
+   _6_1 = .;
+   _6_2 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_market_segment , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '3'  then do;
+      _6_0 = -1;
+      _6_1 = -1;
+      _6_2 = -1;
+   end;
+   else if _dm12 = '2'  then do;
+      _6_0 = 0;
+      _6_1 = 0;
+      _6_2 = 1;
+   end;
+   else if _dm12 = '1'  then do;
+      _6_0 = 0;
+      _6_1 = 1;
+      _6_2 = 0;
+   end;
+   else if _dm12 = '0'  then do;
+      _6_0 = 1;
+      _6_1 = 0;
+      _6_2 = 0;
+   end;
+   else do;
+      _6_0 = .;
+      _6_1 = .;
+      _6_2 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for G_reserved_room_type ;
+drop _7_0 _7_1 _7_2 ;
+if missing( G_reserved_room_type ) then do;
+   _7_0 = .;
+   _7_1 = .;
+   _7_2 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_reserved_room_type , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '0'  then do;
+      _7_0 = 1;
+      _7_1 = 0;
+      _7_2 = 0;
+   end;
+   else if _dm12 = '1'  then do;
+      _7_0 = 0;
+      _7_1 = 1;
+      _7_2 = 0;
+   end;
+   else if _dm12 = '3'  then do;
+      _7_0 = -1;
+      _7_1 = -1;
+      _7_2 = -1;
+   end;
+   else if _dm12 = '2'  then do;
+      _7_0 = 0;
+      _7_1 = 0;
+      _7_2 = 1;
+   end;
+   else do;
+      _7_0 = .;
+      _7_1 = .;
+      _7_2 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for G_total_of_special_requests ;
+drop _8_0 _8_1 ;
+if missing( G_total_of_special_requests ) then do;
+   _8_0 = .;
+   _8_1 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( G_total_of_special_requests , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '0'  then do;
+      _8_0 = 1;
+      _8_1 = 0;
+   end;
+   else if _dm12 = '1'  then do;
+      _8_0 = 0;
+      _8_1 = 1;
+   end;
+   else if _dm12 = '2'  then do;
+      _8_0 = -1;
+      _8_1 = -1;
+   end;
+   else do;
+      _8_0 = .;
+      _8_1 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for arrival_date_year ;
+drop _9_0 _9_1 ;
+if missing( arrival_date_year ) then do;
+   _9_0 = .;
+   _9_1 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( arrival_date_year , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '2016'  then do;
+      _9_0 = 0;
+      _9_1 = 1;
+   end;
+   else if _dm12 = '2017'  then do;
+      _9_0 = -1;
+      _9_1 = -1;
+   end;
+   else if _dm12 = '2015'  then do;
+      _9_0 = 1;
+      _9_1 = 0;
+   end;
+   else do;
+      _9_0 = .;
+      _9_1 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for distribution_channel ;
+drop _10_0 _10_1 _10_2 ;
+if missing( distribution_channel ) then do;
+   _10_0 = .;
+   _10_1 = .;
+   _10_2 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm9 $ 9; drop _dm9 ;
+   _dm9 = put( distribution_channel , $9. );
+   %DMNORMIP( _dm9 )
+   if _dm9 = 'TA/TO'  then do;
+      _10_0 = -1;
+      _10_1 = -1;
+      _10_2 = -1;
+   end;
+   else if _dm9 = 'DIRECT'  then do;
+      _10_0 = 0;
+      _10_1 = 1;
+      _10_2 = 0;
+   end;
+   else if _dm9 = 'CORPORATE'  then do;
+      _10_0 = 1;
+      _10_1 = 0;
+      _10_2 = 0;
+   end;
+   else if _dm9 = 'GDS'  then do;
+      _10_0 = 0;
+      _10_1 = 0;
+      _10_2 = 1;
+   end;
+   else do;
+      _10_0 = .;
+      _10_1 = .;
+      _10_2 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for is_repeated_guest ;
+drop _11_0 ;
+if missing( is_repeated_guest ) then do;
+   _11_0 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm12 $ 12; drop _dm12 ;
+   _dm12 = put( is_repeated_guest , BEST12. );
+   %DMNORMIP( _dm12 )
+   if _dm12 = '0'  then do;
+      _11_0 = 1;
+   end;
+   else if _dm12 = '1'  then do;
+      _11_0 = -1;
+   end;
+   else do;
+      _11_0 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** Generate dummy variables for meal ;
+drop _12_0 _12_1 _12_2 ;
+if missing( meal ) then do;
+   _12_0 = .;
+   _12_1 = .;
+   _12_2 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm2 $ 2; drop _dm2 ;
+   _dm2 = put( meal , $2. );
+   %DMNORMIP( _dm2 )
+   if _dm2 = 'BB'  then do;
+      _12_0 = 1;
+      _12_1 = 0;
+      _12_2 = 0;
+   end;
+   else if _dm2 = 'SC'  then do;
+      _12_0 = -1;
+      _12_1 = -1;
+      _12_2 = -1;
+   end;
+   else if _dm2 = 'HB'  then do;
+      _12_0 = 0;
+      _12_1 = 0;
+      _12_2 = 1;
+   end;
+   else if _dm2 = 'FB'  then do;
+      _12_0 = 0;
+      _12_1 = 1;
+      _12_2 = 0;
+   end;
+   else do;
+      _12_0 = .;
+      _12_1 = .;
+      _12_2 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** If missing inputs, use averages;
+if _DM_BAD > 0 then do;
+   _LP0 =     105.418445102736;
+   goto REG2DR1;
+end;
+
+*** Compute Linear Predictor;
+drop _TEMP;
+drop _LP0;
+_LP0 = 0;
+
+***  Effect: G_adults ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -44.7443769461416) * _TEMP * _0_0;
+_LP0 = _LP0 + (    5.29331400277492) * _TEMP * _0_1;
+_LP0 = _LP0 + (    5.62650556506364) * _TEMP * _0_2;
+
+***  Effect: G_arrival_date_month ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -19.7787787427074) * _TEMP * _1_0;
+_LP0 = _LP0 + (   -11.1350134783742) * _TEMP * _1_1;
+_LP0 = _LP0 + (    8.21085977770147) * _TEMP * _1_2;
+_LP0 = _LP0 + (    8.44876293536433) * _TEMP * _1_3;
+
+***  Effect: G_assigned_room_type ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -30.5682283093288) * _TEMP * _2_0;
+_LP0 = _LP0 + (    1.70592645036116) * _TEMP * _2_1;
+_LP0 = _LP0 + (    3.57699449759803) * _TEMP * _2_2;
+_LP0 = _LP0 + (    9.90479211571776) * _TEMP * _2_3;
+
+***  Effect: G_children ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -13.1618182663939) * _TEMP * _3_0;
+_LP0 = _LP0 + (    1.89027081268066) * _TEMP * _3_1;
+
+***  Effect: G_customer_type ;
+_TEMP = 1;
+_LP0 = _LP0 + (    1.52695195344741) * _TEMP * _4_0;
+
+***  Effect: G_deposit_type ;
+_TEMP = 1;
+_LP0 = _LP0 + (    8.95744000708424) * _TEMP * _5_0;
+
+***  Effect: G_market_segment ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -69.2008931072973) * _TEMP * _6_0;
+_LP0 = _LP0 + (    13.3274357583781) * _TEMP * _6_1;
+_LP0 = _LP0 + (    17.2060387472521) * _TEMP * _6_2;
+
+***  Effect: G_reserved_room_type ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -22.1452518055084) * _TEMP * _7_0;
+_LP0 = _LP0 + (    -10.459775102728) * _TEMP * _7_1;
+_LP0 = _LP0 + (    4.29923778975891) * _TEMP * _7_2;
+
+***  Effect: G_total_of_special_requests ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -1.57608103796648) * _TEMP * _8_0;
+_LP0 = _LP0 + (   -0.46355529053077) * _TEMP * _8_1;
+
+***  Effect: arrival_date_year ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -11.8898148407281) * _TEMP * _9_0;
+_LP0 = _LP0 + (     0.1469319969417) * _TEMP * _9_1;
+
+***  Effect: distribution_channel ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -0.74735887195433) * _TEMP * _10_0;
+_LP0 = _LP0 + (   -6.94185085002753) * _TEMP * _10_1;
+_LP0 = _LP0 + (    11.9267004955747) * _TEMP * _10_2;
+
+***  Effect: is_repeated_guest ;
+_TEMP = 1;
+_LP0 = _LP0 + (    9.07383935440523) * _TEMP * _11_0;
+
+***  Effect: lead_time ;
+_TEMP = lead_time ;
+_LP0 = _LP0 + (   -0.07352023222374 * _TEMP);
+
+***  Effect: meal ;
+_TEMP = 1;
+_LP0 = _LP0 + (   -8.29327162135046) * _TEMP * _12_0;
+_LP0 = _LP0 + (    11.7649740782844) * _TEMP * _12_1;
+_LP0 = _LP0 + (     15.863522589334) * _TEMP * _12_2;
+*--- Intercept ---*;
+_LP0 = _LP0 + (    112.799313360064);
+
+REG2DR1:
+
+*** Predicted Value;
+label P_adr = 'Predicted: adr' ;
+P_adr = _LP0;
+
+
+*************************************;
+***** end scoring code for regression;
+*************************************;
+
+*------------------------------------------------------------*;
+* Reg: Create decision matrix;
+*------------------------------------------------------------*;
+data WORK.adr(label="adr");
+  length   adr                                  8
+           ;
+
+ adr=-6.38;
+output;
+ adr=5400;
+output;
+ adr=2696.81;
+output;
+;
+run;
+proc datasets lib=work nolist;
+modify adr(type=PROFIT label=adr);
+run;
+quit;
+data EM_DMREG / view=EM_DMREG;
+set EMWS2.Drop_TRAIN(keep=
+adr customer_type lead_time);
+run;
+*------------------------------------------------------------* ;
+* Reg: DMDBClass Macro ;
+*------------------------------------------------------------* ;
+%macro DMDBClass;
+    customer_type(ASC)
+%mend DMDBClass;
+*------------------------------------------------------------* ;
+* Reg: DMDBVar Macro ;
+*------------------------------------------------------------* ;
+%macro DMDBVar;
+    adr lead_time
+%mend DMDBVar;
+*------------------------------------------------------------*;
+* Reg: Create DMDB;
+*------------------------------------------------------------*;
+proc dmdb batch data=WORK.EM_DMREG
+dmdbcat=WORK.Reg_DMDB
+maxlevel = 513
+;
+class %DMDBClass;
+var %DMDBVar;
+target
+adr
+;
+run;
+quit;
+*------------------------------------------------------------*;
+* Reg: Run DMREG procedure;
+*------------------------------------------------------------*;
+proc dmreg data=EM_DMREG dmdbcat=WORK.Reg_DMDB
+validata = EMWS2.Drop_VALIDATE
+outest = EMWS2.Reg_EMESTIMATE
+outterms = EMWS2.Reg_OUTTERMS
+outmap= EMWS2.Reg_MAPDS namelen=200
+;
+class
+customer_type
+;
+model adr =
+customer_type
+lead_time
+/error=normal
+coding=DEVIATION
+nodesignprint
+selection=STEPWISE choose=NONE
+Hierarchy=CLASS
+Rule=NONE
+;
+;
+score data=EMWS2.Drop_TEST
+out=_null_
+outfit=EMWS2.Reg_FITTEST
+role = TEST
+;
+code file="/home/jammiethomasras0/Capstone Thesis/Workspaces/EMWS2/Reg/EMPUBLISHSCORE.sas"
+group=Reg
+;
+code file="/home/jammiethomasras0/Capstone Thesis/Workspaces/EMWS2/Reg/EMFLOWSCORE.sas"
+group=Reg
+residual
+;
+run;
+quit;
+
+*************************************;
+*** begin scoring code for regression;
+*************************************;
+
+length _WARN_ $4;
+label _WARN_ = 'Warnings' ;
+
+
+drop _DM_BAD;
+_DM_BAD=0;
+
+*** Check lead_time for missing values ;
+if missing( lead_time ) then do;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+
+*** Generate dummy variables for customer_type ;
+drop _0_0 _0_1 _0_2 ;
+if missing( customer_type ) then do;
+   _0_0 = .;
+   _0_1 = .;
+   _0_2 = .;
+   substr(_warn_,1,1) = 'M';
+   _DM_BAD = 1;
+end;
+else do;
+   length _dm15 $ 15; drop _dm15 ;
+   _dm15 = put( customer_type , $15. );
+   %DMNORMIP( _dm15 )
+   if _dm15 = 'TRANSIENT'  then do;
+      _0_0 = 0;
+      _0_1 = 0;
+      _0_2 = 1;
+   end;
+   else if _dm15 = 'TRANSIENT-PARTY'  then do;
+      _0_0 = -1;
+      _0_1 = -1;
+      _0_2 = -1;
+   end;
+   else if _dm15 = 'CONTRACT'  then do;
+      _0_0 = 1;
+      _0_1 = 0;
+      _0_2 = 0;
+   end;
+   else if _dm15 = 'GROUP'  then do;
+      _0_0 = 0;
+      _0_1 = 1;
+      _0_2 = 0;
+   end;
+   else do;
+      _0_0 = .;
+      _0_1 = .;
+      _0_2 = .;
+      substr(_warn_,2,1) = 'U';
+      _DM_BAD = 1;
+   end;
+end;
+
+*** If missing inputs, use averages;
+if _DM_BAD > 0 then do;
+   _LP0 =     105.418445102736;
+   goto REGDR1;
+end;
+
+*** Compute Linear Predictor;
+drop _TEMP;
+drop _LP0;
+_LP0 = 0;
+
+***  Effect: customer_type ;
+_TEMP = 1;
+_LP0 = _LP0 + (    -1.8743962136777) * _TEMP * _0_0;
+_LP0 = _LP0 + (    -5.5865725881518) * _TEMP * _0_1;
+_LP0 = _LP0 + (    12.2079578487976) * _TEMP * _0_2;
+
+***  Effect: lead_time ;
+_TEMP = lead_time ;
+_LP0 = _LP0 + (   -0.04377764417505 * _TEMP);
+*--- Intercept ---*;
+_LP0 = _LP0 + (     102.17602972306);
+
+REGDR1:
+
+*** Predicted Value;
+label P_adr = 'Predicted: adr' ;
+P_adr = _LP0;
+
+
+*************************************;
+***** end scoring code for regression;
+*************************************;
